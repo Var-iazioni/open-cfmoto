@@ -637,4 +637,13 @@
     <string name="setup_anonymous_telemetry_on">On — anonymous pings &amp; crash reports</string>
     <string name="setup_anonymous_telemetry_off">Off — nothing uploaded</string>
     <string name="setup_anonymous_id">Anonymous id: %1$s</string>
+
+    <!-- Projection source -->
+    <string name="setup_projection_source">Projection source</string>
+    <string name="setup_projection_source_aa">Android Auto</string>
+    <string name="setup_projection_source_carwith">Xiaomi CarWith</string>
+    <string name="setup_projection_source_aa_desc">Google Android Auto (loopback self-mode)</string>
+    <string name="setup_projection_source_carwith_desc">Xiaomi CarWith (local CarLife bridge, Xiaomi/Redmi HyperOS/MIUI)</string>
+    <string name="setup_toast_projection_source">Projection source: %1$s</string>
+    <string name="setup_test_carwith_preview">Test CarWith locally (no bike needed)</string>
 </resources>

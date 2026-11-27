@@ -55,6 +55,9 @@
     <queries>
         <package android:name="com.google.android.projection.gearhead" />
         <package android:name="com.google.android.gms" />
+        <!-- Xiaomi CarWith & built-in Xiaomi CarLife component for CarWith loopback mode. -->
+        <package android:name="com.miui.carlink" />
+        <package android:name="com.baidu.carlife.xiaomi" />
         <!-- So we can detect + best-effort close the official CFMoto app when it grabs the link ports. -->
         <package android:name="com.cfmoto.cfmotointernational" />
     </queries>

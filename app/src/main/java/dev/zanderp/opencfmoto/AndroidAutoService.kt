@@ -21,6 +21,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import dev.zanderp.opencfmoto.aa.AaReceiver
+import dev.zanderp.opencfmoto.carwith.CarWithReceiver
+import dev.zanderp.opencfmoto.carwith.CarWithSelfMode
 
 /**
  * Foreground service that hosts the Android Auto receiver end-to-end (M4):
@@ -35,6 +37,7 @@ class AndroidAutoService : Service() {
 
     private var pipeline: VideoPipeline? = null
     private var receiver: AaReceiver? = null
+    private var carWithReceiver: CarWithReceiver? = null
     private var mediaButtons: MediaButtonBridge? = null
     private var wakeLock: PowerManager.WakeLock? = null
     /** Dim screen wake while GPX Presentation is up (VirtualDisplay stalls if the phone sleeps hard). */
@@ -210,6 +213,8 @@ class AndroidAutoService : Service() {
         mediaButtons = null
         try { receiver?.stop() } catch (_: Exception) {}
         receiver = null
+        try { carWithReceiver?.stop() } catch (_: Exception) {}
+        carWithReceiver = null
         AaVideoBridge.pipeline = null
         try { pipeline?.stop() } catch (_: Exception) {}
         pipeline = null
@@ -256,24 +261,24 @@ class AndroidAutoService : Service() {
         updateNotification(getString(R.string.notif_aa_title), getString(R.string.notif_aa_reconnecting))
 
         startReceiver()
-        if (receiver == null) { resumeFailedFallback(); return }
+        if (receiver == null && carWithReceiver == null) { resumeFailedFallback(); return }
 
         BikeLink.beginHandoff(this)
         AaVideoBridge.onSteadyVideo = {
             AaVideoBridge.onSteadyVideo = null
             resumeSteadyReached = true
             ConnectionState.set(Phase.AA_VIDEO_LIVE)
-            LogBus.log("→ Android Auto video is live (resume)")
+            LogBus.log("→ projection video is live (resume)")
             BikeLink.markAaVideoSteady()
         }
         BikeLink.markWifiReady(BikeWifi.currentNetwork)
-        dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(applicationContext, log = LogBus::log)
+        triggerSelfMode()
 
         // If AA can't self-start from the background (BAL), retry once then hand off to the foreground.
         watchdogHandler.postDelayed({
             if (!isRunning || aaParked || resumeSteadyReached) return@postDelayed
-            LogBus.log("[AA] resume: no AA video yet — re-triggering self-mode once")
-            dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(applicationContext, log = LogBus::log)
+            LogBus.log("[AA] resume: no video yet — re-triggering self-mode once")
+            triggerSelfMode()
             watchdogHandler.postDelayed({
                 if (!isRunning || aaParked || resumeSteadyReached) return@postDelayed
                 resumeFailedFallback()
@@ -504,8 +509,19 @@ class AndroidAutoService : Service() {
         updateForegroundType(allowMicrophone = true)
     }
 
+    private fun isCarWithMode(): Boolean =
+        AppSettings.projectionSource(applicationContext) == ProjectionSource.CARWITH
+
+    private fun triggerSelfMode() {
+        if (isCarWithMode()) {
+            CarWithSelfMode.trigger(applicationContext, LogBus::log)
+        } else {
+            dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(applicationContext, log = LogBus::log)
+        }
+    }
+
     private fun startReceiver() {
-        if (receiver != null) { LogBus.log("[AA] receiver already started"); return }
+        if (receiver != null || carWithReceiver != null) { LogBus.log("[AA] receiver already started"); return }
         try {
             // Resume/Connect after a park: process may still be pinned to a dead bike Network.
             BikeWifi.unbindIfNoBikeNetwork(applicationContext)
@@ -524,12 +540,26 @@ class AndroidAutoService : Service() {
             pipeline = vp
             AaVideoBridge.pipeline = vp
             adaptive.reset()   // fresh session: start adaptation from the user's target
-            receiver = AaReceiver(applicationContext, surface, LogBus::log).also {
-                it.onSessionEnded = { userExit -> onAaSessionEnded(userExit) }
-                it.start()
+            if (isCarWithMode()) {
+                LogBus.log("[CARWITH] starting CarWith local receiver")
+                carWithReceiver = CarWithReceiver(applicationContext, surface, LogBus::log).also {
+                    it.onSessionEnded = { userExit -> onAaSessionEnded(userExit) }
+                    it.start()
+                }
+            } else {
+                receiver = AaReceiver(applicationContext, surface, LogBus::log).also {
+                    it.onSessionEnded = { userExit -> onAaSessionEnded(userExit) }
+                    it.start()
+                }
             }
-            // Capture the bike's handlebar buttons (Bluetooth AVRCP) → AA / Map navigation.
-            ensureMediaButtons()
+            if (!isCarWithMode()) {
+                // Capture the bike's handlebar buttons (Bluetooth AVRCP) → AA / Map navigation.
+                ensureMediaButtons()
+            } else {
+                try { mediaButtons?.stop() } catch (_: Exception) {}
+                mediaButtons = null
+                LogBus.log("[CARWITH] skipping handlebar MediaButtonBridge (keeps phone/BT volume & audio focus normal)")
+            }
         } catch (e: Exception) {
             LogBus.log("[AA] receiver start failed: $e")
             stopSelf()
@@ -564,6 +594,8 @@ class AndroidAutoService : Service() {
         try { receiver?.onSessionEnded = null } catch (_: Exception) {}
         try { receiver?.stop() } catch (_: Exception) {}
         receiver = null
+        try { carWithReceiver?.stop() } catch (_: Exception) {}
+        carWithReceiver = null
         AaVideoBridge.pipeline = null
         try { pipeline?.stop(abandonNavigation = false) } catch (_: Exception) {}
         pipeline = null
@@ -622,7 +654,7 @@ class AndroidAutoService : Service() {
             if (BikeLink.takeAaDropRetry()) {
                 LogBus.log("[AA] re-triggering self-mode after handshake drop")
                 try {
-                    dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(this, log = LogBus::log)
+                    triggerSelfMode()
                 } catch (e: Exception) {
                     LogBus.log("[AA] drop re-trigger failed: $e")
                 }
@@ -674,6 +706,8 @@ class AndroidAutoService : Service() {
         mediaButtons = null
         try { receiver?.stop() } catch (_: Exception) {}
         receiver = null
+        try { carWithReceiver?.stop() } catch (_: Exception) {}
+        carWithReceiver = null
         AaVideoBridge.pipeline = null
         try { pipeline?.stop() } catch (_: Exception) {}
         pipeline = null

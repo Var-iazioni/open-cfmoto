@@ -636,4 +636,13 @@
     <string name="setup_anonymous_telemetry_on">开——匿名心跳与崩溃报告</string>
     <string name="setup_anonymous_telemetry_off">关——不上传任何内容</string>
     <string name="setup_anonymous_id">匿名 ID：%1$s</string>
+
+    <!-- 投屏协议来源 -->
+    <string name="setup_projection_source">投屏协议</string>
+    <string name="setup_projection_source_aa">Android Auto</string>
+    <string name="setup_projection_source_carwith">小米 CarWith</string>
+    <string name="setup_projection_source_aa_desc">Google Android Auto（本地回环自连）</string>
+    <string name="setup_projection_source_carwith_desc">小米 CarWith（本地 CarLife 通道，仅限小米/红米手机）</string>
+    <string name="setup_toast_projection_source">投屏协议：%1$s</string>
+    <string name="setup_test_carwith_preview">本地测试 CarWith 画面（无需车机）</string>
 </resources>

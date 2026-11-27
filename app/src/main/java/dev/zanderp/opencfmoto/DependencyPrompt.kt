@@ -43,27 +43,41 @@ object DependencyPrompt {
     }
 
     fun audit(ctx: android.content.Context, forScan: Boolean = false): List<Issue> = buildList {
-        if (!SetupHelper.isAndroidAutoInstalled(ctx)) {
-            add(
-                Issue(
-                    id = "aa",
-                    title = "Google Android Auto",
-                    detail = "Required to project Maps / Waze to the dash. Install it from the Play Store.",
-                    required = true,
-                    action = Action.INSTALL_ANDROID_AUTO,
-                ),
-            )
-        }
-        if (!SetupHelper.isPlayServicesPresent(ctx)) {
-            add(
-                Issue(
-                    id = "gms",
-                    title = "Google Play services",
-                    detail = "Android Auto needs Play services on this phone. Install or update them from the Play Store.",
-                    required = true,
-                    action = Action.INSTALL_PLAY_SERVICES,
-                ),
-            )
+        if (AppSettings.projectionSource(ctx) == ProjectionSource.CARWITH) {
+            if (!dev.zanderp.opencfmoto.carwith.CarWithSelfMode.isAvailable(ctx)) {
+                add(
+                    Issue(
+                        id = "carwith",
+                        title = "Xiaomi CarWith",
+                        detail = "Xiaomi CarWith (com.miui.carlink) is not installed on this phone.",
+                        required = true,
+                        action = Action.OPEN_SETUP,
+                    ),
+                )
+            }
+        } else {
+            if (!SetupHelper.isAndroidAutoInstalled(ctx)) {
+                add(
+                    Issue(
+                        id = "aa",
+                        title = "Google Android Auto",
+                        detail = "Required to project Maps / Waze to the dash. Install it from the Play Store.",
+                        required = true,
+                        action = Action.INSTALL_ANDROID_AUTO,
+                    ),
+                )
+            }
+            if (!SetupHelper.isPlayServicesPresent(ctx)) {
+                add(
+                    Issue(
+                        id = "gms",
+                        title = "Google Play services",
+                        detail = "Android Auto needs Play services on this phone. Install or update them from the Play Store.",
+                        required = true,
+                        action = Action.INSTALL_PLAY_SERVICES,
+                    ),
+                )
+            }
         }
         val missingPerms = SetupHelper.missingConnectPermissions(ctx).toMutableList()
         if (forScan || !BikeMemory.hasSaved(ctx)) {

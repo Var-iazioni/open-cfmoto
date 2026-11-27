@@ -184,15 +184,22 @@ class MainActivity : AppCompatActivity() {
     private fun startAaFlow(qr: QrData) {
         try {
             if (!WifiGate.ensureEnabledOrPrompt(this)) return
+            val isCarWith = AppSettings.projectionSource(this) == ProjectionSource.CARWITH
             // AA Connect needs Nearby + Bluetooth so HUR (START_WIRELESS_PROJECTION) can run when
-            // WirelessStartupActivity is a no-op (common on AA 16.4+/17.4+). Mirror/Map unchanged.
-            if (!ensureNearbyBtForAaConnect()) return
+            // WirelessStartupActivity is a no-op (common on AA 16.4+/17.4+). CarWith/Mirror/Map unchanged.
+            if (!isCarWith && !ensureNearbyBtForAaConnect()) return
             // Map / Mirror / stale PXC must die first — half-switches leave framesSent=0.
             tearDownForModeSwitch(clearMap = true, clearMirror = true)
             applyProfile(qr)
             val bikeName = BikeMemory.lastBikeName(this) ?: qr.ssid
             ConnectionState.set(Phase.STARTING_AA, bikeName)
-            log("→ starting Android Auto receiver (loopback self-mode). Ensure Android Auto is installed & set up.")
+            log(
+                if (isCarWith) {
+                    "→ starting Xiaomi CarWith receiver (CarLife loopback)."
+                } else {
+                    "→ starting Android Auto receiver (loopback self-mode). Ensure Android Auto is installed & set up."
+                },
+            )
 
             // Parallel startup: the two slow steps (AA reaching steady video, and the user accepting the
             // bike Wi-Fi dialog) now overlap. [BikeLink] gates the actual bike probe until BOTH complete,
@@ -203,36 +210,43 @@ class MainActivity : AppCompatActivity() {
             AaVideoBridge.onSteadyVideo = {
                 AaVideoBridge.onSteadyVideo = null
                 ConnectionState.set(Phase.AA_VIDEO_LIVE)
-                LogBus.log("→ Android Auto video is live")
+                LogBus.log(if (isCarWith) "→ CarWith video is live" else "→ Android Auto video is live")
                 AndroidAutoService.upgradeForegroundForMicrophone()
                 BikeLink.markAaVideoSteady()
             }
             AndroidAutoService.start(this)
-            // Trigger Google AA to project from the FOREGROUND activity (background-activity-launch
-            // safe on Android 12+/15), after giving the service's :5288 server time to bind.
-            // AA 16.4+/17.4+ often need the broadcast fallbacks; retry once if video never arrives
-            // (common when the first WirelessStartupReceiver is ignored).
-            logView.postDelayed({
-                try {
-                    dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(this, log = ::log)
-                } catch (e: Exception) {
-                    log("AA self-mode trigger failed: $e")
-                }
-            }, 900)
+            if (!isCarWith) {
+                // Trigger Google AA to project from the FOREGROUND activity (background-activity-launch
+                // safe on Android 12+/15), after giving the service's :5288 server time to bind.
+                // AA 16.4+/17.4+ often need the broadcast fallbacks; retry once if video never arrives
+                // (common when the first WirelessStartupReceiver is ignored).
+                logView.postDelayed({
+                    try {
+                        dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(this, log = ::log)
+                    } catch (e: Exception) {
+                        log("AA self-mode trigger failed: $e")
+                    }
+                }, 900)
+            }
             // Additive retry for AA 16.4+/17.4+ that ignore the first broadcast — skipped if
             // a session is already live (re-firing START_WIRELESS_PROJECTION kills AAP).
             logView.postDelayed({
                 if (aaAlreadyLiveOrTerminal()) {
                     if (AaVideoBridge.aaSessionLive || AaVideoBridge.aaDecoding) {
-                        log("[AA] skip re-trigger — AA already connected/decoding")
+                        log(if (isCarWith) "[CARWITH] skip re-trigger — already connected/decoding" else "[AA] skip re-trigger — AA already connected/decoding")
                     }
                     return@postDelayed
                 }
                 try {
-                    log("[AA] no video yet — re-triggering self-mode (AA 16.4+/17.4+ fallbacks)")
-                    dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(this, log = ::log)
+                    if (isCarWith) {
+                        log("[CARWITH] no video yet — re-triggering CarWith entry")
+                        dev.zanderp.opencfmoto.carwith.CarWithSelfMode.trigger(this, log = ::log)
+                    } else {
+                        log("[AA] no video yet — re-triggering self-mode (AA 16.4+/17.4+ fallbacks)")
+                        dev.zanderp.opencfmoto.aa.AaSelfMode.trigger(this, log = ::log)
+                    }
                 } catch (e: Exception) {
-                    log("AA self-mode re-trigger failed: $e")
+                    log("self-mode re-trigger failed: $e")
                 }
             }, 4_500)
             // Give up the silent black/QR reconnect loop — surface a clear error after several tries.
@@ -242,14 +256,19 @@ class MainActivity : AppCompatActivity() {
                     p == Phase.STREAMING || p == Phase.MIRRORING
                 ) return@postDelayed
                 if (AaVideoBridge.aaSessionLive || AaVideoBridge.aaDecoding) return@postDelayed
-                // Still no AA after retries — stop thrashing (bike SoftAP may already be up).
-                log("[AA] Android Auto never attached — stopping silent retry")
-                val detail = if (AaVideoBridge.aaSessionSeen) {
-                    getString(R.string.conn_detail_aa_dropped)
+                if (isCarWith) {
+                    log("[CARWITH] CarWith never attached — stopping silent retry")
+                    ConnectionState.set(Phase.ERROR, "CarWith failed to start")
                 } else {
-                    getString(R.string.conn_detail_aa_not_started)
+                    // Still no AA after retries — stop thrashing (bike SoftAP may already be up).
+                    log("[AA] Android Auto never attached — stopping silent retry")
+                    val detail = if (AaVideoBridge.aaSessionSeen) {
+                        getString(R.string.conn_detail_aa_dropped)
+                    } else {
+                        getString(R.string.conn_detail_aa_not_started)
+                    }
+                    ConnectionState.set(Phase.ERROR, detail)
                 }
-                ConnectionState.set(Phase.ERROR, detail)
             }, 18_000)
             // Kick off the Wi-Fi join right away, in parallel with AA boot.
             joinWifi(qr, gateOnAaSteady = true)

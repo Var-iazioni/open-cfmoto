@@ -199,6 +199,9 @@ class SetupActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.transport_auto).setOnClickListener { setTransport(WifiTransport.AUTO) }
         findViewById<MaterialButton>(R.id.transport_ap).setOnClickListener { setTransport(WifiTransport.AP) }
         findViewById<MaterialButton>(R.id.transport_p2p).setOnClickListener { setTransport(WifiTransport.P2P) }
+        findViewById<MaterialButton>(R.id.source_aa).setOnClickListener { setProjectionSource(ProjectionSource.ANDROID_AUTO) }
+        findViewById<MaterialButton>(R.id.source_carwith).setOnClickListener { setProjectionSource(ProjectionSource.CARWITH) }
+        findViewById<MaterialButton>(R.id.btn_test_carwith_preview).setOnClickListener { testCarWithLocally() }
         findViewById<MaterialButton>(R.id.secrets_on).setOnClickListener { setSecrets(true) }
         findViewById<MaterialButton>(R.id.secrets_off).setOnClickListener { setSecrets(false) }
         findViewById<MaterialButton>(R.id.telemetry_on).setOnClickListener { setTelemetry(true) }
@@ -438,6 +441,36 @@ class SetupActivity : AppCompatActivity() {
         toast(getString(R.string.setup_toast_transport, t.label))
     }
 
+    private fun setProjectionSource(source: ProjectionSource) {
+        AppSettings.setProjectionSource(this, source)
+        refreshOptions()
+        toast(getString(R.string.setup_toast_projection_source, source.label))
+    }
+
+    private fun testCarWithLocally() {
+        if (!dev.zanderp.opencfmoto.carwith.CarWithSelfMode.isAvailable(this)) {
+            Toast.makeText(this, "Xiaomi CarWith (com.miui.carlink) not installed", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AppSettings.setProjectionSource(this, ProjectionSource.CARWITH)
+        refreshOptions()
+        LogBus.log("[CARWITH] starting local preview test (no bike)")
+        if (AaVideoBridge.aaDecoding || AaVideoBridge.aaSessionLive) {
+            startActivity(android.content.Intent(this, HudViewActivity::class.java))
+            return
+        }
+        Toast.makeText(this, "正在拉起 CarWith，若弹出权限/协议窗口请点击允许", Toast.LENGTH_LONG).show()
+        AaVideoBridge.onSteadyVideo = {
+            AaVideoBridge.onSteadyVideo = null
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed) {
+                    startActivity(android.content.Intent(this, HudViewActivity::class.java))
+                }
+            }
+        }
+        AndroidAutoService.start(this)
+    }
+
     private fun setSecrets(on: Boolean) {
         AppSettings.setIncludeSecretsInLogs(this, on)
         refreshOptions()
@@ -605,6 +638,13 @@ class SetupActivity : AppCompatActivity() {
             R.id.transport_auto to WifiTransport.AUTO,
             R.id.transport_ap to WifiTransport.AP,
             R.id.transport_p2p to WifiTransport.P2P)
+        val source = AppSettings.projectionSource(this)
+        findViewById<android.widget.TextView>(R.id.projection_source_desc).text =
+            if (source == ProjectionSource.CARWITH) getString(R.string.setup_projection_source_carwith_desc)
+            else getString(R.string.setup_projection_source_aa_desc)
+        highlight(source,
+            R.id.source_aa to ProjectionSource.ANDROID_AUTO,
+            R.id.source_carwith to ProjectionSource.CARWITH)
         val secrets = AppSettings.includeSecretsInLogs(this)
         findViewById<android.widget.TextView>(R.id.secrets_desc).text =
             if (secrets) getString(R.string.setup_secrets_on_desc)

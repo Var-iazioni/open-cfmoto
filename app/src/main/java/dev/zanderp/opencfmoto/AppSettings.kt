@@ -34,6 +34,7 @@ object AppSettings {
     private const val KEY_KEEP_WIFI = "keep_wifi_after_disconnect"
     private const val KEY_BT_TRIGGER_MAC = "bt_trigger_mac"
     private const val KEY_BT_TRIGGER_NAME = "bt_trigger_name"
+    private const val KEY_PROJECTION_SOURCE = "projection_source"
 
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -150,6 +151,12 @@ object AppSettings {
             .apply()
     }
 
+    fun projectionSource(ctx: Context): ProjectionSource =
+        ProjectionSource.byId(prefs(ctx).getString(KEY_PROJECTION_SOURCE, null))
+
+    fun setProjectionSource(ctx: Context, source: ProjectionSource) =
+        prefs(ctx).edit().putString(KEY_PROJECTION_SOURCE, source.id).apply()
+
     fun applyToHolder(ctx: Context) {
         BikeProfileHolder.forceNonTouch = forceNonTouch(ctx)
         BikeProfileHolder.forceTouch = forceTouch(ctx)
@@ -177,5 +184,17 @@ enum class WifiTransport(val id: String, val label: String) {
     companion object {
         fun byId(id: String?): WifiTransport =
             entries.firstOrNull { it.id == id } ?: AUTO
+    }
+}
+
+/** Upstream projection source feeding the bike H.264 compositor. */
+enum class ProjectionSource(val id: String, val label: String) {
+    ANDROID_AUTO("aa", "Android Auto"),
+    CARWITH("carwith", "Xiaomi CarWith"),
+    ;
+
+    companion object {
+        fun byId(id: String?): ProjectionSource =
+            entries.firstOrNull { it.id == id } ?: ANDROID_AUTO
     }
 }
